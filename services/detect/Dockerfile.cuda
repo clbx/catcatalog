@@ -1,0 +1,21 @@
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY services/detect/requirements.txt .
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+RUN python3 -c "from ultralytics import YOLO; YOLO('yolov8m.pt')"
+
+COPY services/__init__.py ./services/
+COPY services/storage.py ./services/
+COPY services/detect/ ./services/detect/
+
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8000
+CMD ["uvicorn", "services.detect.api:app", "--host", "0.0.0.0", "--port", "8000"]

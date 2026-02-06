@@ -1,0 +1,9 @@
+crops/
+images/
+clips/
+annotated_*
+*.pyc
+__pycache__/
+.git/
+.claude/
+*.pt

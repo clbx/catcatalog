@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-catcatalog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-catcatalog}
+      POSTGRES_DB: ${POSTGRES_DB:-catcatalog}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catcatalog"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  catalog:
+    build:
+      context: .
+      dockerfile: services/catalog/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://catcatalog:catcatalog@postgres:5432/catcatalog}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  detect:
+    build:
+      context: .
+      dockerfile: services/detect/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - S3_BUCKET=${S3_BUCKET:-catcatalog}
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - S3_INGEST_PREFIX=${S3_INGEST_PREFIX:-ingest/}
+      - S3_PROCESSED_PREFIX=${S3_PROCESSED_PREFIX:-processed/}
+      - S3_CROPS_PREFIX=${S3_CROPS_PREFIX:-crops/}
+      - POLL_INTERVAL=${POLL_INTERVAL:-5}
+      - CONFIDENCE=${CONFIDENCE:-0.25}
+      - FRAME_SKIP=${FRAME_SKIP:-4}
+      - CATALOG_URL=http://catalog:8001
+    depends_on:
+      - catalog
+
+  # detect-cuda:
+  #   build:
+  #     context: .
+  #     dockerfile: services/detect/Dockerfile.cuda
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     - S3_BUCKET=${S3_BUCKET:-catcatalog}
+  #     - S3_REGION=${S3_REGION:-us-east-1}
+  #     - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
+  #     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+  #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+  #     - S3_INGEST_PREFIX=${S3_INGEST_PREFIX:-ingest/}
+  #     - S3_PROCESSED_PREFIX=${S3_PROCESSED_PREFIX:-processed/}
+  #     - S3_CROPS_PREFIX=${S3_CROPS_PREFIX:-crops/}
+  #     - POLL_INTERVAL=${POLL_INTERVAL:-5}
+  #     - CONFIDENCE=${CONFIDENCE:-0.25}
+  #     - FRAME_SKIP=${FRAME_SKIP:-4}
+  #     - CATALOG_URL=http://catalog:8001
+  #   depends_on:
+  #     - catalog
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+
+volumes:
+  pgdata:
