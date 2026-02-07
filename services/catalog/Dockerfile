@@ -6,6 +6,7 @@ COPY services/catalog/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/__init__.py ./services/
+COPY services/storage.py ./services/
 COPY services/catalog/ ./services/catalog/
 
 ENV PYTHONUNBUFFERED=1

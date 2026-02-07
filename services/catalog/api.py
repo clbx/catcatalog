@@ -5,11 +5,12 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import desc
 from sqlalchemy.exc import IntegrityError
 
+from ..storage import get_bucket, get_s3_client
 from .models import Cat, ProcessedClip, Sighting, create_tables, get_session_factory
 
 Session = None
@@ -327,6 +328,35 @@ def stats():
             .filter(Sighting.cat_id.is_(None))
             .count(),
         }
+
+
+# --- S3 proxy ---
+
+
+@app.get("/crops/{key:path}")
+def get_crop(key: str):
+    """Proxy a crop image from S3."""
+    s3 = get_s3_client()
+    try:
+        resp = s3.get_object(Bucket=get_bucket(), Key=key)
+        data = resp["Body"].read()
+        content_type = resp.get("ContentType", "image/jpeg")
+        return Response(content=data, media_type=content_type)
+    except Exception:
+        return Response(status_code=404, content=b"Not found")
+
+
+@app.get("/videos/{key:path}")
+def get_video(key: str):
+    """Proxy a video file from S3."""
+    s3 = get_s3_client()
+    try:
+        resp = s3.get_object(Bucket=get_bucket(), Key=key)
+        data = resp["Body"].read()
+        content_type = resp.get("ContentType", "video/mp4")
+        return Response(content=data, media_type=content_type)
+    except Exception:
+        return Response(status_code=404, content=b"Not found")
 
 
 # --- Serialization helpers ---
