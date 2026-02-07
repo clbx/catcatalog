@@ -4,11 +4,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import desc
+from sqlalchemy.exc import IntegrityError
 
-from .models import Cat, Sighting, create_tables, get_session_factory
+from .models import Cat, ProcessedClip, Sighting, create_tables, get_session_factory
 
 Session = None
 
@@ -23,6 +25,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Cat Catalog — Catalog Service", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # --- Request/Response models ---
@@ -40,12 +48,14 @@ class CatUpdate(BaseModel):
 
 class SightingCreate(BaseModel):
     cat_id: int | None = None
-    animal: str
     confidence: float
-    bbox: list[int] | None = None
     source_key: str | None = None
     crop_key: str | None = None
     frame_timestamp: float | None = None
+
+
+class SightingUpdate(BaseModel):
+    cat_id: int | None = None
 
 
 # --- Health ---
@@ -142,9 +152,7 @@ def create_sighting(req: SightingCreate):
     with Session() as session:
         sighting = Sighting(
             cat_id=req.cat_id,
-            animal=req.animal,
             confidence=req.confidence,
-            bbox=",".join(str(x) for x in req.bbox) if req.bbox else None,
             source_key=req.source_key,
             crop_key=req.crop_key,
             frame_timestamp=req.frame_timestamp,
@@ -164,11 +172,15 @@ def create_sighting(req: SightingCreate):
 
 
 @app.get("/sightings")
-def list_sightings(limit: int = 50, offset: int = 0, animal: str | None = None):
+def list_sightings(
+    limit: int = 50,
+    offset: int = 0,
+    unassigned: bool = False,
+):
     with Session() as session:
         q = session.query(Sighting)
-        if animal:
-            q = q.filter(Sighting.animal == animal)
+        if unassigned:
+            q = q.filter(Sighting.cat_id.is_(None))
         sightings = (
             q.order_by(desc(Sighting.timestamp)).offset(offset).limit(limit).all()
         )
@@ -186,6 +198,122 @@ def get_sighting(sighting_id: int):
         return _sighting_to_dict(sighting)
 
 
+@app.patch("/sightings/{sighting_id}")
+def update_sighting(sighting_id: int, req: SightingUpdate):
+    with Session() as session:
+        sighting = session.get(Sighting, sighting_id)
+        if not sighting:
+            return JSONResponse(
+                status_code=404, content={"error": "Sighting not found"}
+            )
+
+        old_cat_id = sighting.cat_id
+        new_cat_id = req.cat_id
+
+        # Update the assignment
+        sighting.cat_id = new_cat_id
+
+        # Decrement old cat's count
+        if old_cat_id and old_cat_id != new_cat_id:
+            old_cat = session.get(Cat, old_cat_id)
+            if old_cat:
+                old_cat.total_sightings = max(0, old_cat.total_sightings - 1)
+
+        # Increment new cat's count
+        if new_cat_id and new_cat_id != old_cat_id:
+            new_cat = session.get(Cat, new_cat_id)
+            if new_cat:
+                new_cat.total_sightings += 1
+                new_cat.last_seen = datetime.now(timezone.utc)
+
+        session.commit()
+        session.refresh(sighting)
+        return _sighting_to_dict(sighting)
+
+
+# --- Clip processing ---
+
+
+class ClipLockRequest(BaseModel):
+    source_key: str
+    worker_id: str
+
+
+class ClipCompleteRequest(BaseModel):
+    source_key: str
+    detections: int = 0
+    error: str | None = None
+
+
+@app.get("/clips/status")
+def clip_status(source_key: str):
+    """Check if a clip has been processed or is in progress."""
+    with Session() as session:
+        clip = (
+            session.query(ProcessedClip)
+            .filter(ProcessedClip.source_key == source_key)
+            .first()
+        )
+        if not clip:
+            return {"status": "new"}
+        return {
+            "status": clip.status,
+            "worker_id": clip.worker_id,
+            "started_at": clip.started_at.isoformat() if clip.started_at else None,
+            "completed_at": clip.completed_at.isoformat()
+            if clip.completed_at
+            else None,
+            "detections": clip.detections,
+        }
+
+
+@app.post("/clips/lock")
+def clip_lock(req: ClipLockRequest):
+    """Attempt to lock a clip for processing. Always returns 200 with lock result."""
+    with Session() as session:
+        existing = (
+            session.query(ProcessedClip)
+            .filter(ProcessedClip.source_key == req.source_key)
+            .first()
+        )
+        if existing:
+            return {
+                "locked": False,
+                "status": existing.status,
+                "worker_id": existing.worker_id,
+            }
+        try:
+            clip = ProcessedClip(
+                source_key=req.source_key,
+                status="processing",
+                worker_id=req.worker_id,
+            )
+            session.add(clip)
+            session.commit()
+            return {"locked": True, "status": "processing"}
+        except IntegrityError:
+            session.rollback()
+            return {"locked": False, "status": "processing"}
+
+
+@app.post("/clips/complete")
+def clip_complete(req: ClipCompleteRequest):
+    """Mark a clip as done or errored."""
+    with Session() as session:
+        clip = (
+            session.query(ProcessedClip)
+            .filter(ProcessedClip.source_key == req.source_key)
+            .first()
+        )
+        if not clip:
+            return JSONResponse(status_code=404, content={"error": "Clip not found"})
+        clip.status = "error" if req.error else "done"
+        clip.completed_at = datetime.now(timezone.utc)
+        clip.detections = req.detections
+        session.commit()
+        return {"status": clip.status}
+
+
 # --- Stats ---
 
 
@@ -195,6 +323,9 @@ def stats():
         return {
             "total_cats": session.query(Cat).count(),
             "total_sightings": session.query(Sighting).count(),
+            "unassigned_sightings": session.query(Sighting)
+            .filter(Sighting.cat_id.is_(None))
+            .count(),
         }
 
 
@@ -217,9 +348,7 @@ def _sighting_to_dict(sighting):
         "id": sighting.id,
         "cat_id": sighting.cat_id,
         "timestamp": sighting.timestamp.isoformat() if sighting.timestamp else None,
-        "animal": sighting.animal,
         "confidence": sighting.confidence,
-        "bbox": [int(x) for x in sighting.bbox.split(",")] if sighting.bbox else None,
         "source_key": sighting.source_key,
         "crop_key": sighting.crop_key,
         "frame_timestamp": sighting.frame_timestamp,

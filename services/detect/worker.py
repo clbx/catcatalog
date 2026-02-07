@@ -1,4 +1,4 @@
-"""Detection worker — polls S3 ingest prefix, processes files, posts results to catalog."""
+"""Detection worker — polls S3 for new clips, runs detection, posts results to catalog."""
 
 import os
 import platform
@@ -11,11 +11,9 @@ import cv2
 import requests
 
 from ..storage import (
-    acquire_lock,
     download_to_temp,
+    get_bucket,
     list_objects,
-    move_object,
-    release_lock,
     upload_bytes,
 )
 from .model import (
@@ -27,14 +25,12 @@ from .model import (
 )
 
 # Config from env
-INGEST_PREFIX = os.environ.get("S3_INGEST_PREFIX", "ingest/")
-PROCESSED_PREFIX = os.environ.get("S3_PROCESSED_PREFIX", "processed/")
+S3_WATCH_PREFIX = os.environ.get("S3_WATCH_PREFIX", "clips/")
 CROPS_PREFIX = os.environ.get("S3_CROPS_PREFIX", "crops/")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "5"))
 CONFIDENCE = float(os.environ.get("CONFIDENCE", "0.25"))
 FRAME_SKIP = int(os.environ.get("FRAME_SKIP", "4"))
 CATALOG_URL = os.environ.get("CATALOG_URL", "http://catalog:8001")
-LOCK_TTL = int(os.environ.get("LOCK_TTL", "300"))
 
 # Unique worker ID
 WORKER_ID = f"{platform.node()}-{uuid.uuid4().hex[:8]}"
@@ -47,6 +43,34 @@ status = {
     "files_processed": 0,
     "total_detections": 0,
 }
+
+
+def try_lock(key):
+    """Try to lock a clip for processing via the catalog API.
+    Returns True if lock acquired, False if already processed/in-progress."""
+    try:
+        resp = requests.post(
+            f"{CATALOG_URL}/clips/lock",
+            json={"source_key": key, "worker_id": WORKER_ID},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json().get("locked", False)
+    except Exception as e:
+        print(f"  Warning: lock request failed for {key}: {e}")
+    return False
+
+
+def mark_complete(key, detections, error=None):
+    """Mark a clip as done or errored in the catalog."""
+    try:
+        payload = {"source_key": key, "detections": detections}
+        if error:
+            payload["error"] = str(error)
+        resp = requests.post(f"{CATALOG_URL}/clips/complete", json=payload, timeout=10)
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"  Warning: failed to mark complete for {key}: {e}")
 
 
 def post_sighting(sighting):
@@ -73,40 +97,36 @@ def save_crop(crop, source_key, index, timestamp=None):
 
 
 def process_file(key, model):
-    """Download a file from S3, run detection, post results, move to processed."""
+    """Download a file from S3, run detection, post one sighting with best crop."""
     ext = Path(key).suffix.lower()
     if ext not in IMAGE_EXTENSIONS | VIDEO_EXTENSIONS:
-        print(f"  Skipping unsupported file: {key}")
         return
 
     status["current_file"] = key
     print(f"Processing: {key}")
 
     local_path = download_to_temp(key)
+    all_detections = []
 
     try:
         if ext in IMAGE_EXTENSIONS:
             image, detections = process_image(local_path, model, CONFIDENCE)
             if image is None:
                 print(f"  Could not read image: {key}")
+                mark_complete(key, 0, error="Could not read image")
                 return
 
-            print(f"  Found {len(detections)} animal(s)")
             for i, det in enumerate(detections, 1):
                 crop_key = save_crop(det["crop"], key, i)
-                post_sighting(
+                all_detections.append(
                     {
-                        "animal": det["animal"],
-                        "confidence": round(det["confidence"], 4),
-                        "bbox": det["bbox"],
-                        "source_key": key,
+                        "confidence": det["confidence"],
                         "crop_key": crop_key,
+                        "frame_timestamp": None,
                     }
                 )
-                status["total_detections"] += 1
 
         else:
-            frame_detections = 0
             for result in process_video(local_path, model, CONFIDENCE, FRAME_SKIP):
                 if result["type"] == "info":
                     print(
@@ -116,49 +136,67 @@ def process_file(key, model):
 
                 for i, det in enumerate(result["detections"], 1):
                     crop_key = save_crop(det["crop"], key, i, result["timestamp"])
-                    post_sighting(
+                    all_detections.append(
                         {
-                            "animal": det["animal"],
-                            "confidence": round(det["confidence"], 4),
-                            "bbox": det["bbox"],
-                            "source_key": key,
+                            "confidence": det["confidence"],
                             "crop_key": crop_key,
                             "frame_timestamp": round(result["timestamp"], 2),
                         }
                     )
-                    frame_detections += 1
-                    status["total_detections"] += 1
 
-            print(f"  Found {frame_detections} detection(s) across video")
+        print(f"  {len(all_detections)} detection(s)")
+
+        if all_detections:
+            # Pick the best detection (highest confidence) for the sighting
+            best = max(all_detections, key=lambda d: d["confidence"])
+            post_sighting(
+                {
+                    "confidence": round(best["confidence"], 4),
+                    "source_key": key,
+                    "crop_key": best["crop_key"],
+                    "frame_timestamp": best["frame_timestamp"],
+                }
+            )
+            status["total_detections"] += 1
+
+        mark_complete(key, len(all_detections))
+
+    except Exception as e:
+        print(f"  Error processing {key}: {e}")
+        mark_complete(key, 0, error=str(e))
 
     finally:
         local_path.unlink(missing_ok=True)
-
-    # Move to processed
-    dest_key = key.replace(INGEST_PREFIX, PROCESSED_PREFIX, 1)
-    move_object(key, dest_key)
-    print(f"  Moved to {dest_key}")
 
     status["files_processed"] += 1
     status["current_file"] = None
 
 
 def poll_loop(model):
-    """Main polling loop — check for new files in ingest prefix."""
+    """Main polling loop — check for new files, lock and process new ones."""
     status["state"] = "idle"
-    print(f"Watching s3://{INGEST_PREFIX} every {POLL_INTERVAL}s")
+    endpoint = os.environ.get("S3_ENDPOINT_URL", "s3.amazonaws.com")
+    bucket = get_bucket()
+    print(f"Watching {endpoint}/{bucket}/{S3_WATCH_PREFIX} every {POLL_INTERVAL}s")
     print(f"  confidence={CONFIDENCE}, frame_skip={FRAME_SKIP}")
     print(f"  catalog={CATALOG_URL}")
 
+    known_keys = set()
+
     while True:
         try:
-            keys = list_objects(INGEST_PREFIX)
+            keys = list_objects(S3_WATCH_PREFIX)
             for key in keys:
-                # Skip "directory" markers
                 if key.endswith("/"):
+                    continue
+                if key in known_keys:
+                    continue
+                if not try_lock(key):
+                    known_keys.add(key)
                     continue
                 status["state"] = "processing"
                 process_file(key, model)
+                known_keys.add(key)
                 status["state"] = "idle"
         except Exception as e:
             print(f"Poll error: {e}")

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Cat Catalog</title>
+        <link rel="stylesheet" href="/static/style.css" />
+    </head>
+    <body>
+        <header>
+            <h1>Cat Catalog</h1>
+            <span class="stats" id="stats"></span>
+        </header>
+
+        <div class="container">
+            <!-- Cats Panel -->
+            <div class="panel panel-cats">
+                <div class="panel-header">
+                    <h2>Cats</h2>
+                    <button onclick="toggleAddCat()">+ Add</button>
+                </div>
+                <div class="panel-body">
+                    <div class="add-cat-form hidden" id="addCatForm">
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input id="newCatName" placeholder="e.g. Boots" />
+                        </div>
+                        <div class="form-group">
+                            <label>Notes</label>
+                            <textarea
+                                id="newCatNotes"
+                                placeholder="Optional notes..."
+                            ></textarea>
+                        </div>
+                        <div class="btn-group">
+                            <button onclick="createCat()">Save</button>
+                            <button class="secondary" onclick="toggleAddCat()">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                    <div id="catList"></div>
+                </div>
+            </div>
+
+            <!-- Sightings Panel -->
+            <div class="panel panel-sightings">
+                <div class="panel-header">
+                    <h2 id="sightingsTitle">Unassigned Sightings</h2>
+                </div>
+                <div class="panel-body" id="sightingsList"></div>
+            </div>
+
+            <!-- Detail Panel -->
+            <div class="panel panel-detail" id="detailPanelWrapper">
+                <div class="panel-header">
+                    <h2>Details</h2>
+                </div>
+                <div class="panel-body" id="detailPanel">
+                    <div class="detail-empty">Select a cat to view details</div>
+                </div>
+            </div>
+        </div>
+
+        <script src="/static/app.js"></script>
+    </body>
+</html>

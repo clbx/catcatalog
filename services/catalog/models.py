@@ -47,14 +47,28 @@ class Sighting(Base):
     timestamp = Column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
-    animal = Column(String(20), nullable=False)
     confidence = Column(Float, nullable=False)
-    bbox = Column(String(100), nullable=True)  # stored as "x1,y1,x2,y2"
     source_key = Column(String(500), nullable=True)  # S3 key of source image/video
     crop_key = Column(String(500), nullable=True)  # S3 key of cropped image
     frame_timestamp = Column(Float, nullable=True)  # for video: seconds into clip
 
     cat = relationship("Cat", back_populates="sightings")
+
+
+class ProcessedClip(Base):
+    __tablename__ = "processed_clips"
+
+    id = Column(Integer, primary_key=True)
+    source_key = Column(String(500), nullable=False, unique=True, index=True)
+    status = Column(
+        String(20), nullable=False, default="processing"
+    )  # processing, done, error
+    worker_id = Column(String(100), nullable=True)
+    started_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    detections = Column(Integer, default=0)
 
 
 def get_engine():

@@ -27,20 +27,34 @@ services:
       postgres:
         condition: service_healthy
 
-  detect:
+  web:
     build:
       context: .
-      dockerfile: services/detect/Dockerfile
+      dockerfile: services/web/Dockerfile
     ports:
-      - "8000:8000"
+      - "3000:3000"
     environment:
       - S3_BUCKET=${S3_BUCKET:-catcatalog}
       - S3_REGION=${S3_REGION:-us-east-1}
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - S3_INGEST_PREFIX=${S3_INGEST_PREFIX:-ingest/}
-      - S3_PROCESSED_PREFIX=${S3_PROCESSED_PREFIX:-processed/}
+    depends_on:
+      - catalog
+
+  detect:
+    build:
+      context: .
+      dockerfile: services/detect/Dockerfile
+    deploy:
+      replicas: 2
+    environment:
+      - S3_BUCKET=${S3_BUCKET:-catcatalog}
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - S3_WATCH_PREFIX=${S3_WATCH_PREFIX:-clips/}
       - S3_CROPS_PREFIX=${S3_CROPS_PREFIX:-crops/}
       - POLL_INTERVAL=${POLL_INTERVAL:-5}
       - CONFIDENCE=${CONFIDENCE:-0.25}
@@ -61,8 +75,7 @@ services:
   #     - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
   #     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
   #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-  #     - S3_INGEST_PREFIX=${S3_INGEST_PREFIX:-ingest/}
-  #     - S3_PROCESSED_PREFIX=${S3_PROCESSED_PREFIX:-processed/}
+  #     - S3_WATCH_PREFIX=${S3_WATCH_PREFIX:-clips/}
   #     - S3_CROPS_PREFIX=${S3_CROPS_PREFIX:-crops/}
   #     - POLL_INTERVAL=${POLL_INTERVAL:-5}
   #     - CONFIDENCE=${CONFIDENCE:-0.25}
