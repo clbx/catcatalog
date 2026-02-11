@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import desc
@@ -26,12 +25,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Cat Catalog — Catalog Service", lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 # --- Request/Response models ---

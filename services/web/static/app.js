@@ -1,14 +1,11 @@
-const CATALOG =
-  window.location.protocol + "//" + window.location.hostname + ":8001";
-const WEB = "";
+const CATALOG = "/api";
 
 let cats = [];
 let selectedCatId = null;
 let currentView = "all"; // "all", "unassigned", or a cat id
 
 async function api(path, opts = {}) {
-  const url = path.startsWith("/api/") ? WEB + path : CATALOG + path;
-  const res = await fetch(url, {
+  const res = await fetch(CATALOG + path, {
     headers: { "Content-Type": "application/json", ...opts.headers },
     ...opts,
   });

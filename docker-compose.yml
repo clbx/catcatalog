@@ -38,6 +38,8 @@ services:
       dockerfile: services/web/Dockerfile
     ports:
       - "3000:3000"
+    environment:
+      - CATALOG_HOST=catalog
     depends_on:
       - catalog
 
