@@ -39,7 +39,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - CATALOG_HOST=catalog
+      - CATALOG_URL=http://catalog:8001
     depends_on:
       - catalog
 
