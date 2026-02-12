@@ -14,7 +14,7 @@ async function api(path, opts = {}) {
 }
 
 function cropUrl(key) {
-  return CATALOG + "/crops/" + encodeURIComponent(key);
+  return CATALOG + "/crops/" + key;
 }
 
 function formatDate(iso) {
@@ -38,7 +38,7 @@ function formatTime(iso) {
 }
 
 function videoUrl(key) {
-  return CATALOG + "/videos/" + encodeURIComponent(key);
+  return CATALOG + "/videos/" + key;
 }
 
 function confColor(c) {
