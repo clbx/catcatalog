@@ -207,7 +207,7 @@ def poll_loop(model):
 
 def start_worker():
     """Load model and start the polling loop."""
-    print("Starting detection worker...")
+    print(f"Starting detection worker (version: {os.environ.get('VERSION', 'dev')})")
     model, device = load_model()
     print(f"YOLOv8m loaded on {device}")
     poll_loop(model)

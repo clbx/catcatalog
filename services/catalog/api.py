@@ -1,5 +1,6 @@
 """FastAPI service for the cat catalog."""
 
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -20,7 +21,7 @@ async def lifespan(app: FastAPI):
     global Session
     create_tables()
     Session = get_session_factory()
-    print("Catalog service ready")
+    print(f"Catalog service ready (version: {os.environ.get('VERSION', 'dev')})")
     yield
 
 

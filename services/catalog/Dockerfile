@@ -9,6 +9,8 @@ COPY services/__init__.py ./services/
 COPY services/storage.py ./services/
 COPY services/catalog/ ./services/catalog/
 
+ARG VERSION=dev
+ENV VERSION=${VERSION}
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8001
