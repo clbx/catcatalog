@@ -316,7 +316,6 @@ textarea {
     color: #aaa;
     font-size: 11px;
     padding: 4px 10px;
-    margin-top: 2px;
     width: fit-content;
 }
 .btn-video:hover {
@@ -386,6 +385,7 @@ textarea {
     display: flex;
     gap: 6px;
     margin-top: 2px;
+    align-items: center;
 }
 
 /* Dismiss button */
