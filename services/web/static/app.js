@@ -1,8 +1,11 @@
 const CATALOG = "/api";
+const PAGE_SIZE = 20;
 
 let cats = [];
 let selectedCatId = null;
 let currentView = "all"; // "all", "unassigned", or a cat id
+let currentPage = 0;
+let lastPageFull = false; // true if last fetch returned PAGE_SIZE results
 
 async function api(path, opts = {}) {
   const res = await fetch(CATALOG + path, {
@@ -80,46 +83,78 @@ function setDetailVisible(show) {
     : "none";
 }
 
-async function loadAllSightings() {
+function paginationParams() {
+  return `limit=${PAGE_SIZE}&offset=${currentPage * PAGE_SIZE}`;
+}
+
+async function loadAllSightings(resetPage = true) {
   selectedCatId = null;
   currentView = "all";
+  if (resetPage) currentPage = 0;
   renderCats();
   setDetailVisible(false);
   document.getElementById("sightingsTitle").textContent = "All Sightings";
   try {
-    const sightings = await api("/sightings?limit=200");
+    const sightings = await api(`/sightings?${paginationParams()}`);
+    lastPageFull = sightings.length === PAGE_SIZE;
     renderSightings(sightings);
   } catch (e) {
     console.error("Sightings error:", e);
   }
 }
 
-async function loadUnassignedSightings() {
+async function loadUnassignedSightings(resetPage = true) {
   selectedCatId = null;
   currentView = "unassigned";
+  if (resetPage) currentPage = 0;
   renderCats();
   setDetailVisible(false);
   document.getElementById("sightingsTitle").textContent =
     "Unassigned Sightings";
   try {
-    const sightings = await api("/sightings?unassigned=true&limit=200");
+    const sightings = await api(
+      `/sightings?unassigned=true&${paginationParams()}`,
+    );
+    lastPageFull = sightings.length === PAGE_SIZE;
     renderSightings(sightings);
   } catch (e) {
     console.error("Sightings error:", e);
   }
 }
 
-async function loadCatSightings(catId) {
+async function loadCatSightings(catId, resetPage = true) {
   const cat = cats.find((c) => c.id === catId);
+  if (resetPage) currentPage = 0;
   document.getElementById("sightingsTitle").textContent = cat
     ? `${cat.name || "Unnamed"}'s Sightings`
     : "Sightings";
   try {
-    const sightings = await api(`/cats/${catId}/sightings?limit=200`);
+    const sightings = await api(
+      `/cats/${catId}/sightings?${paginationParams()}`,
+    );
+    lastPageFull = sightings.length === PAGE_SIZE;
     renderSightings(sightings);
   } catch (e) {
     console.error("Cat sightings error:", e);
   }
+}
+
+function prevPage() {
+  if (currentPage <= 0) return;
+  currentPage--;
+  reloadCurrentView();
+}
+
+function nextPage() {
+  if (!lastPageFull) return;
+  currentPage++;
+  reloadCurrentView();
+}
+
+function reloadCurrentView() {
+  if (currentView === "all") loadAllSightings(false);
+  else if (currentView === "unassigned") loadUnassignedSightings(false);
+  else loadCatSightings(currentView, false);
 }
 
 async function loadCatDetail(catId) {
@@ -202,12 +237,18 @@ function renderSightings(sightings) {
     if (!groups[day]) groups[day] = [];
     groups[day].push(s);
   }
-  el.innerHTML = Object.entries(groups)
-    .map(([day, items]) => {
-      const cards = items.map(renderSightingCard).join("");
-      return `<div class="day-group"><div class="day-header">${day}</div>${cards}</div>`;
-    })
-    .join("");
+  el.innerHTML =
+    Object.entries(groups)
+      .map(([day, items]) => {
+        const cards = items.map(renderSightingCard).join("");
+        return `<div class="day-group"><div class="day-header">${day}</div>${cards}</div>`;
+      })
+      .join("") +
+    `<div class="pagination">
+      <button onclick="prevPage()" ${currentPage === 0 ? "disabled" : ""}>Previous</button>
+      <span class="page-info">Page ${currentPage + 1}</span>
+      <button onclick="nextPage()" ${!lastPageFull ? "disabled" : ""}>Next</button>
+    </div>`;
 }
 
 function renderDetail(cat) {

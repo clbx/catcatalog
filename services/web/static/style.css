@@ -380,3 +380,20 @@ textarea {
 .video-modal-close:hover {
     background: #c73e54;
 }
+
+/* Pagination */
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 16px 0;
+}
+.pagination button:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+.pagination .page-info {
+    font-size: 13px;
+    color: #888;
+}
