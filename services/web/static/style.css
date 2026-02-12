@@ -381,6 +381,25 @@ textarea {
     background: #c73e54;
 }
 
+/* Sighting buttons row */
+.sighting-buttons {
+    display: flex;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+/* Dismiss button */
+.btn-dismiss {
+    background: #e94560;
+    color: #fff;
+    font-size: 11px;
+    padding: 4px 10px;
+    width: fit-content;
+}
+.btn-dismiss:hover {
+    background: #c73e54;
+}
+
 /* Pagination */
 .pagination {
     display: flex;

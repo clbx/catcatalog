@@ -225,6 +225,23 @@ def update_sighting(sighting_id: int, req: SightingUpdate):
         return _sighting_to_dict(sighting)
 
 
+@app.delete("/sightings/{sighting_id}")
+def delete_sighting(sighting_id: int):
+    with Session() as session:
+        sighting = session.get(Sighting, sighting_id)
+        if not sighting:
+            return JSONResponse(
+                status_code=404, content={"error": "Sighting not found"}
+            )
+        if sighting.cat_id:
+            cat = session.get(Cat, sighting.cat_id)
+            if cat:
+                cat.total_sightings = max(0, cat.total_sightings - 1)
+        session.delete(sighting)
+        session.commit()
+        return {"deleted": sighting_id}
+
+
 # --- Clip processing ---
 
 

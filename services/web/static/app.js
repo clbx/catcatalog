@@ -202,6 +202,7 @@ function renderCats() {
 function renderSightingCard(s) {
   const hasVideo = s.source_key && /\.(mp4|avi|mov|mkv)$/i.test(s.source_key);
   const assignedCat = s.cat_id ? cats.find((c) => c.id === s.cat_id) : null;
+  const showDismiss = currentView === "unassigned" && !assignedCat;
   return `
     <div class="sighting-card">
       <img src="${s.crop_key ? cropUrl(s.crop_key) : ""}" alt="crop" onerror="this.style.display='none'">
@@ -219,7 +220,10 @@ function renderSightingCard(s) {
         }
         <span class="timestamp-time">${formatTime(s.timestamp)}</span>
         <span class="confidence-subtle">${(s.confidence * 100).toFixed(0)}%</span>
-        ${hasVideo ? `<button class="btn-video" onclick="playVideo('${esc(s.source_key)}')">View Video</button>` : ""}
+        <div class="sighting-buttons">
+          ${hasVideo ? `<button class="btn-video" onclick="playVideo('${esc(s.source_key)}')">View Video</button>` : ""}
+          ${showDismiss ? `<button class="btn-dismiss" onclick="dismissSighting(${s.id})">Not a cat!</button>` : ""}
+        </div>
       </div>
     </div>`;
 }
@@ -313,6 +317,16 @@ async function assignSighting(sightingId, catId) {
     loadStats();
   } catch (e) {
     console.error("Assign error:", e);
+  }
+}
+
+async function dismissSighting(sightingId) {
+  try {
+    await api(`/sightings/${sightingId}`, { method: "DELETE" });
+    reloadCurrentView();
+    loadStats();
+  } catch (e) {
+    console.error("Dismiss error:", e);
   }
 }
 
