@@ -371,8 +371,7 @@ async function saveCat(catId) {
 }
 
 async function deleteCat(catId) {
-    if (!confirm("Delete this cat? Its sightings will become unassigned."))
-        return;
+    if (!confirm("Delete this cat? It can be restored later.")) return;
     try {
         await api(`/cats/${catId}`, { method: "DELETE" });
         selectedCatId = null;

@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     create_engine,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 
@@ -33,6 +34,7 @@ class Cat(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     total_sightings = Column(Integer, default=0)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, default=None)
 
     sightings = relationship(
         "Sighting", back_populates="cat", order_by="desc(Sighting.timestamp)"
@@ -86,3 +88,17 @@ def get_session_factory():
 def create_tables():
     engine = get_engine()
     Base.metadata.create_all(engine)
+    _run_migrations(engine)
+
+
+def _run_migrations(engine):
+    with engine.connect() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE cats ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL"
+            )
+        )
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_cats_deleted_at ON cats (deleted_at)")
+        )
+        conn.commit()

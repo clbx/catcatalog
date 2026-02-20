@@ -79,6 +79,7 @@ def list_cats(limit: int = 50, offset: int = 0):
     with Session() as session:
         cats = (
             session.query(Cat)
+            .filter(Cat.deleted_at.is_(None))
             .order_by(desc(Cat.last_seen))
             .offset(offset)
             .limit(limit)
@@ -90,7 +91,7 @@ def list_cats(limit: int = 50, offset: int = 0):
 @app.get("/cats/{cat_id}")
 def get_cat(cat_id: int):
     with Session() as session:
-        cat = session.get(Cat, cat_id)
+        cat = _get_active_cat(session, cat_id)
         if not cat:
             return JSONResponse(status_code=404, content={"error": "Cat not found"})
         return _cat_to_dict(cat)
@@ -99,7 +100,7 @@ def get_cat(cat_id: int):
 @app.patch("/cats/{cat_id}")
 def update_cat(cat_id: int, req: CatUpdate):
     with Session() as session:
-        cat = session.get(Cat, cat_id)
+        cat = _get_active_cat(session, cat_id)
         if not cat:
             return JSONResponse(status_code=404, content={"error": "Cat not found"})
         if req.name is not None:
@@ -114,10 +115,10 @@ def update_cat(cat_id: int, req: CatUpdate):
 @app.delete("/cats/{cat_id}")
 def delete_cat(cat_id: int):
     with Session() as session:
-        cat = session.get(Cat, cat_id)
+        cat = _get_active_cat(session, cat_id)
         if not cat:
             return JSONResponse(status_code=404, content={"error": "Cat not found"})
-        session.delete(cat)
+        cat.deleted_at = datetime.now(timezone.utc)
         session.commit()
         return {"deleted": cat_id}
 
@@ -125,7 +126,7 @@ def delete_cat(cat_id: int):
 @app.get("/cats/{cat_id}/sightings")
 def get_cat_sightings(cat_id: int, limit: int = 50, offset: int = 0):
     with Session() as session:
-        cat = session.get(Cat, cat_id)
+        cat = _get_active_cat(session, cat_id)
         if not cat:
             return JSONResponse(status_code=404, content={"error": "Cat not found"})
         sightings = (
@@ -326,6 +327,37 @@ def clip_complete(req: ClipCompleteRequest):
         return {"status": clip.status}
 
 
+# --- Restore / Cleanup ---
+
+
+@app.post("/cats/{cat_id}/restore")
+def restore_cat(cat_id: int):
+    with Session() as session:
+        cat = session.get(Cat, cat_id)
+        if not cat or cat.deleted_at is None:
+            return JSONResponse(
+                status_code=404, content={"error": "No deleted cat found"}
+            )
+        cat.deleted_at = None
+        session.commit()
+        session.refresh(cat)
+        return _cat_to_dict(cat)
+
+
+@app.delete("/admin/deleted-cats")
+def purge_deleted_cats():
+    with Session() as session:
+        deleted_cats = session.query(Cat).filter(Cat.deleted_at.isnot(None)).all()
+        count = len(deleted_cats)
+        for cat in deleted_cats:
+            session.query(Sighting).filter(Sighting.cat_id == cat.id).update(
+                {"cat_id": None}
+            )
+            session.delete(cat)
+        session.commit()
+        return {"purged": count}
+
+
 # --- Stats ---
 
 
@@ -333,7 +365,7 @@ def clip_complete(req: ClipCompleteRequest):
 def stats():
     with Session() as session:
         return {
-            "total_cats": session.query(Cat).count(),
+            "total_cats": session.query(Cat).filter(Cat.deleted_at.is_(None)).count(),
             "total_sightings": session.query(Sighting).count(),
             "unassigned_sightings": session.query(Sighting)
             .filter(Sighting.cat_id.is_(None))
@@ -368,6 +400,16 @@ def get_video(key: str):
         return Response(content=data, media_type=content_type)
     except Exception:
         return Response(status_code=404, content=b"Not found")
+
+
+# --- Query helpers ---
+
+
+def _get_active_cat(session, cat_id):
+    cat = session.get(Cat, cat_id)
+    if cat and cat.deleted_at is not None:
+        return None
+    return cat
 
 
 # --- Serialization helpers ---
