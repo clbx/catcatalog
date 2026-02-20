@@ -199,7 +199,11 @@ function renderCats() {
     </div>
   `,
                   )
-                  .join(""));
+                  .join("")) +
+        '<div class="sidebar-divider"></div>' +
+        `<div class="cat-item${currentView === "deleted" ? " active" : ""}" onclick="loadDeleted()">
+      <span class="name">Deleted</span>
+    </div>`;
 }
 
 function renderSightingCard(s) {
@@ -371,7 +375,7 @@ async function saveCat(catId) {
 }
 
 async function deleteCat(catId) {
-    if (!confirm("Delete this cat? It can be restored later.")) return;
+    if (!confirm("Delete this cat?")) return;
     try {
         await api(`/cats/${catId}`, { method: "DELETE" });
         selectedCatId = null;
@@ -413,6 +417,90 @@ function closeVideo() {
         player.pause();
         player.src = "";
         modal.classList.remove("visible");
+    }
+}
+
+// --- Deleted items ---
+
+async function loadDeleted() {
+    closeSidebar();
+    selectedCatId = null;
+    currentView = "deleted";
+    renderCats();
+    setDetailVisible(false);
+    document.getElementById("sightingsTitle").textContent = "Deleted";
+    try {
+        const [deletedCats, deletedSightings] = await Promise.all([
+            api("/cats/deleted"),
+            api("/sightings/deleted"),
+        ]);
+        renderDeleted(deletedCats, deletedSightings);
+    } catch (e) {
+        console.error("Deleted error:", e);
+    }
+}
+
+function renderDeleted(deletedCats, deletedSightings) {
+    const el = document.getElementById("sightingsList");
+    if (deletedCats.length === 0 && deletedSightings.length === 0) {
+        el.innerHTML = '<div class="empty-state">Nothing deleted</div>';
+        return;
+    }
+    let html = "";
+    if (deletedCats.length > 0) {
+        html += '<div class="day-header">Cats</div>';
+        html += deletedCats
+            .map(
+                (c) => `
+            <div class="deleted-cat-card">
+                <div class="deleted-cat-info">
+                    <span class="deleted-cat-name">${esc(c.name || "Unnamed #" + c.id)}</span>
+                    <span class="deleted-cat-meta">Deleted ${formatDate(c.deleted_at)} &middot; ${c.total_sightings} sightings</span>
+                </div>
+                <button class="btn-restore" onclick="restoreCat(${c.id})">Restore</button>
+            </div>
+        `,
+            )
+            .join("");
+    }
+    if (deletedSightings.length > 0) {
+        html += '<div class="day-header">Sightings</div>';
+        html += deletedSightings
+            .map(
+                (s) => `
+            <div class="deleted-cat-card">
+                <img src="${s.crop_key ? cropUrl(s.crop_key) : ""}" alt="crop" class="deleted-sighting-thumb" onerror="this.style.display='none'">
+                <div class="deleted-cat-info">
+                    <span class="deleted-cat-name">${formatDate(s.timestamp)}</span>
+                    <span class="deleted-cat-meta">Deleted ${formatDate(s.deleted_at)} &middot; ${(s.confidence * 100).toFixed(0)}% confidence</span>
+                </div>
+                <button class="btn-restore" onclick="restoreSighting(${s.id})">Restore</button>
+            </div>
+        `,
+            )
+            .join("");
+    }
+    el.innerHTML = html;
+}
+
+async function restoreCat(catId) {
+    try {
+        await api(`/cats/${catId}/restore`, { method: "POST" });
+        loadCats();
+        loadStats();
+        loadDeleted();
+    } catch (e) {
+        console.error("Restore error:", e);
+    }
+}
+
+async function restoreSighting(sightingId) {
+    try {
+        await api(`/sightings/${sightingId}/restore`, { method: "POST" });
+        loadStats();
+        loadDeleted();
+    } catch (e) {
+        console.error("Restore sighting error:", e);
     }
 }
 

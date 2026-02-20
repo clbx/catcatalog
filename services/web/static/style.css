@@ -406,6 +406,48 @@ textarea {
     background: #c73e54;
 }
 
+/* Deleted cat cards */
+.deleted-cat-card {
+    background: #16213e;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+.deleted-cat-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.deleted-cat-name {
+    font-weight: 500;
+}
+.deleted-cat-meta {
+    font-size: 12px;
+    color: #888;
+}
+.deleted-sighting-thumb {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #0f3460;
+    flex-shrink: 0;
+}
+.btn-restore {
+    background: #2e7d32;
+    color: #fff;
+    font-size: 12px;
+    padding: 6px 14px;
+    white-space: nowrap;
+}
+.btn-restore:hover {
+    background: #388e3c;
+}
+
 /* Sidebar toggle button - hidden on desktop */
 .sidebar-toggle {
     display: none;

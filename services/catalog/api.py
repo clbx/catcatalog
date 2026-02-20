@@ -88,6 +88,20 @@ def list_cats(limit: int = 50, offset: int = 0):
         return [_cat_to_dict(c) for c in cats]
 
 
+@app.get("/cats/deleted")
+def list_deleted_cats():
+    with Session() as session:
+        cats = (
+            session.query(Cat)
+            .filter(Cat.deleted_at.isnot(None))
+            .order_by(desc(Cat.deleted_at))
+            .all()
+        )
+        return [
+            {**_cat_to_dict(c), "deleted_at": c.deleted_at.isoformat()} for c in cats
+        ]
+
+
 @app.get("/cats/{cat_id}")
 def get_cat(cat_id: int):
     with Session() as session:
@@ -131,7 +145,7 @@ def get_cat_sightings(cat_id: int, limit: int = 50, offset: int = 0):
             return JSONResponse(status_code=404, content={"error": "Cat not found"})
         sightings = (
             session.query(Sighting)
-            .filter(Sighting.cat_id == cat_id)
+            .filter(Sighting.cat_id == cat_id, Sighting.deleted_at.is_(None))
             .order_by(desc(Sighting.timestamp))
             .offset(offset)
             .limit(limit)
@@ -174,13 +188,28 @@ def list_sightings(
     unassigned: bool = False,
 ):
     with Session() as session:
-        q = session.query(Sighting)
+        q = session.query(Sighting).filter(Sighting.deleted_at.is_(None))
         if unassigned:
             q = q.filter(Sighting.cat_id.is_(None))
         sightings = (
             q.order_by(desc(Sighting.timestamp)).offset(offset).limit(limit).all()
         )
         return [_sighting_to_dict(s) for s in sightings]
+
+
+@app.get("/sightings/deleted")
+def list_deleted_sightings():
+    with Session() as session:
+        sightings = (
+            session.query(Sighting)
+            .filter(Sighting.deleted_at.isnot(None))
+            .order_by(desc(Sighting.deleted_at))
+            .all()
+        )
+        return [
+            {**_sighting_to_dict(s), "deleted_at": s.deleted_at.isoformat()}
+            for s in sightings
+        ]
 
 
 @app.get("/sightings/{sighting_id}")
@@ -239,7 +268,7 @@ def delete_sighting(sighting_id: int):
             cat = session.get(Cat, sighting.cat_id)
             if cat:
                 cat.total_sightings = max(0, cat.total_sightings - 1)
-        session.delete(sighting)
+        sighting.deleted_at = datetime.now(timezone.utc)
         session.commit()
         return {"deleted": sighting_id}
 
@@ -344,18 +373,43 @@ def restore_cat(cat_id: int):
         return _cat_to_dict(cat)
 
 
-@app.delete("/admin/deleted-cats")
-def purge_deleted_cats():
+@app.post("/sightings/{sighting_id}/restore")
+def restore_sighting(sighting_id: int):
     with Session() as session:
+        sighting = session.get(Sighting, sighting_id)
+        if not sighting or sighting.deleted_at is None:
+            return JSONResponse(
+                status_code=404, content={"error": "No deleted sighting found"}
+            )
+        sighting.deleted_at = None
+        if sighting.cat_id:
+            cat = session.get(Cat, sighting.cat_id)
+            if cat:
+                cat.total_sightings += 1
+        session.commit()
+        session.refresh(sighting)
+        return _sighting_to_dict(sighting)
+
+
+@app.delete("/admin/deleted")
+def purge_deleted():
+    with Session() as session:
+        # Purge deleted sightings
+        deleted_sightings = (
+            session.query(Sighting).filter(Sighting.deleted_at.isnot(None)).count()
+        )
+        session.query(Sighting).filter(Sighting.deleted_at.isnot(None)).delete()
+
+        # Purge deleted cats
         deleted_cats = session.query(Cat).filter(Cat.deleted_at.isnot(None)).all()
-        count = len(deleted_cats)
+        cats_count = len(deleted_cats)
         for cat in deleted_cats:
             session.query(Sighting).filter(Sighting.cat_id == cat.id).update(
                 {"cat_id": None}
             )
             session.delete(cat)
         session.commit()
-        return {"purged": count}
+        return {"purged_cats": cats_count, "purged_sightings": deleted_sightings}
 
 
 # --- Stats ---
@@ -366,9 +420,11 @@ def stats():
     with Session() as session:
         return {
             "total_cats": session.query(Cat).filter(Cat.deleted_at.is_(None)).count(),
-            "total_sightings": session.query(Sighting).count(),
+            "total_sightings": session.query(Sighting)
+            .filter(Sighting.deleted_at.is_(None))
+            .count(),
             "unassigned_sightings": session.query(Sighting)
-            .filter(Sighting.cat_id.is_(None))
+            .filter(Sighting.cat_id.is_(None), Sighting.deleted_at.is_(None))
             .count(),
         }
 

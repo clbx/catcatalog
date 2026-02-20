@@ -53,6 +53,7 @@ class Sighting(Base):
     source_key = Column(String(500), nullable=True)  # S3 key of source image/video
     crop_key = Column(String(500), nullable=True)  # S3 key of cropped image
     frame_timestamp = Column(Float, nullable=True)  # for video: seconds into clip
+    deleted_at = Column(DateTime(timezone=True), nullable=True, default=None)
 
     cat = relationship("Cat", back_populates="sightings")
 
@@ -100,5 +101,15 @@ def _run_migrations(engine):
         )
         conn.execute(
             text("CREATE INDEX IF NOT EXISTS ix_cats_deleted_at ON cats (deleted_at)")
+        )
+        conn.execute(
+            text(
+                "ALTER TABLE sightings ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_sightings_deleted_at ON sightings (deleted_at)"
+            )
         )
         conn.commit()
