@@ -58,6 +58,14 @@ def detect_frame(frame, model, confidence=0.25):
             continue
 
         x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+
+        # Expand bounding box by 50% in each direction to double crop size
+        bw, bh = x2 - x1, y2 - y1
+        x1 = x1 - bw * 0.5
+        y1 = y1 - bh * 0.5
+        x2 = x2 + bw * 0.5
+        y2 = y2 + bh * 0.5
+
         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
 
         h, w = frame.shape[:2]

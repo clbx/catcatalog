@@ -9,6 +9,7 @@ body {
     background: #1a1a2e;
     color: #e0e0e0;
     height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
 }
@@ -403,6 +404,120 @@ textarea {
 }
 .btn-dismiss:hover {
     background: #c73e54;
+}
+
+/* Sidebar toggle button - hidden on desktop */
+.sidebar-toggle {
+    display: none;
+    background: none;
+    color: #e0e0e0;
+    font-size: 22px;
+    padding: 4px 8px;
+    cursor: pointer;
+    border: none;
+    line-height: 1;
+}
+.sidebar-toggle:hover {
+    color: #e94560;
+    background: none;
+}
+
+/* Sidebar overlay - hidden by default */
+.sidebar-overlay {
+    display: none;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .sidebar-toggle {
+        display: block;
+    }
+
+    .container {
+        position: relative;
+    }
+
+    .panel-cats {
+        position: fixed;
+        top: var(--header-height, 46px);
+        left: 0;
+        bottom: 0;
+        width: 280px;
+        min-width: 280px;
+        z-index: 100;
+        background: #1a1a2e;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        border-right: 1px solid #0f3460;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .panel-cats.open {
+        transform: translateX(0);
+    }
+
+    .sidebar-overlay {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 99;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+    }
+
+    .sidebar-overlay.visible {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .panel-sightings {
+        min-width: 0;
+    }
+
+    .panel-detail {
+        width: 280px;
+        min-width: 280px;
+    }
+
+    .sighting-card {
+        flex-direction: column;
+    }
+
+    .sighting-card img {
+        width: 100%;
+        height: auto;
+        max-height: 200px;
+    }
+}
+
+@media (max-width: 600px) {
+    .container {
+        flex-direction: column;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .panel-sightings,
+    .panel-detail {
+        width: 100%;
+        min-width: 0;
+        border-right: none;
+        overflow: visible;
+    }
+
+    .panel-sightings .panel-body,
+    .panel-detail .panel-body {
+        overflow: visible;
+    }
+
+    .panel-detail {
+        border-top: 1px solid #0f3460;
+    }
 }
 
 /* Pagination */

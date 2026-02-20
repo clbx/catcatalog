@@ -2,18 +2,29 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+        />
         <title>Cat Catalog</title>
         <link rel="stylesheet" href="/style.css" />
     </head>
     <body>
         <header>
+            <button
+                class="sidebar-toggle"
+                onclick="toggleSidebar()"
+                aria-label="Toggle sidebar"
+            >
+                &#9776;
+            </button>
             <h1>Cat Catalog</h1>
             <span class="stats" id="stats"></span>
             <span class="version">__VERSION__</span>
         </header>
 
         <div class="container">
+            <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
             <!-- Cats Panel -->
             <div class="panel panel-cats">
                 <div class="panel-header">
