@@ -3,6 +3,7 @@
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response
@@ -186,11 +187,15 @@ def list_sightings(
     limit: int = 50,
     offset: int = 0,
     unassigned: bool = False,
+    since: Optional[str] = None,
 ):
     with Session() as session:
         q = session.query(Sighting).filter(Sighting.deleted_at.is_(None))
         if unassigned:
             q = q.filter(Sighting.cat_id.is_(None))
+        if since:
+            since_dt = datetime.fromisoformat(since)
+            q = q.filter(Sighting.timestamp >= since_dt)
         sightings = (
             q.order_by(desc(Sighting.timestamp)).offset(offset).limit(limit).all()
         )

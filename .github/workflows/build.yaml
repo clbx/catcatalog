@@ -1,118 +1,123 @@
 name: Build and Push Docker Images
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
+    push:
+        branches: [main]
+        tags: ["v*"]
 
 jobs:
-  changes:
-    runs-on: ubuntu-latest
-    if: github.ref_type != 'tag'
-    outputs:
-      catalog: ${{ steps.filter.outputs.catalog }}
-      web: ${{ steps.filter.outputs.web }}
-      detect: ${{ steps.filter.outputs.detect }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    changes:
+        runs-on: ubuntu-latest
+        if: github.ref_type != 'tag'
+        outputs:
+            catalog: ${{ steps.filter.outputs.catalog }}
+            web: ${{ steps.filter.outputs.web }}
+            detect: ${{ steps.filter.outputs.detect }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
 
-      - name: Detect changes
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            catalog:
-              - 'services/catalog/**'
-              - 'services/storage.py'
-            web:
-              - 'services/web/**'
-            detect:
-              - 'services/detect/**'
-              - 'services/storage.py'
+            - name: Detect changes
+              uses: dorny/paths-filter@v3
+              id: filter
+              with:
+                  filters: |
+                      catalog:
+                        - 'services/catalog/**'
+                        - 'services/storage.py'
+                      web:
+                        - 'services/web/**'
+                      detect:
+                        - 'services/detect/**'
+                        - 'services/storage.py'
+                      notify:
+                        - 'services/notify/**'
 
-  build:
-    runs-on: ubuntu-latest
-    needs: [changes]
-    if: always()
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: catcatalog-catalog
-            dockerfile: services/catalog/Dockerfile
-            changed: catalog
-          - image: catcatalog-web
-            dockerfile: services/web/Dockerfile
-            changed: web
-          - image: catcatalog-detect
-            dockerfile: services/detect/Dockerfile
-            changed: detect
-          - image: catcatalog-detect-cuda
-            dockerfile: services/detect/Dockerfile.cuda
-            changed: detect
+    build:
+        runs-on: ubuntu-latest
+        needs: [changes]
+        if: always()
+        permissions:
+            contents: read
+            packages: write
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - image: catcatalog-catalog
+                      dockerfile: services/catalog/Dockerfile
+                      changed: catalog
+                    - image: catcatalog-web
+                      dockerfile: services/web/Dockerfile
+                      changed: web
+                    - image: catcatalog-detect
+                      dockerfile: services/detect/Dockerfile
+                      changed: detect
+                    - image: catcatalog-detect-cuda
+                      dockerfile: services/detect/Dockerfile.cuda
+                      changed: detect
+                    - image: catcatalog-notify
+                      dockerfile: services/notify/Dockerfile
+                      changed: notify
 
-    steps:
-      - name: Skip check
-        id: skip
-        run: |
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            echo "should_build=true" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ needs.changes.outputs[matrix.changed] }}" == "true" ]]; then
-            echo "should_build=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_build=false" >> "$GITHUB_OUTPUT"
-          fi
+        steps:
+            - name: Skip check
+              id: skip
+              run: |
+                  if [[ "${{ github.ref_type }}" == "tag" ]]; then
+                    echo "should_build=true" >> "$GITHUB_OUTPUT"
+                  elif [[ "${{ needs.changes.outputs[matrix.changed] }}" == "true" ]]; then
+                    echo "should_build=true" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "should_build=false" >> "$GITHUB_OUTPUT"
+                  fi
 
-      - name: Checkout
-        if: steps.skip.outputs.should_build == 'true'
-        uses: actions/checkout@v4
+            - name: Checkout
+              if: steps.skip.outputs.should_build == 'true'
+              uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        if: steps.skip.outputs.should_build == 'true'
-        uses: docker/setup-buildx-action@v3
+            - name: Set up Docker Buildx
+              if: steps.skip.outputs.should_build == 'true'
+              uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
-        if: steps.skip.outputs.should_build == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+            - name: Login to GHCR
+              if: steps.skip.outputs.should_build == 'true'
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker metadata
-        if: steps.skip.outputs.should_build == 'true'
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            - name: Docker metadata
+              if: steps.skip.outputs.should_build == 'true'
+              id: meta
+              uses: docker/metadata-action@v5
+              with:
+                  images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+                  tags: |
+                      type=raw,value=latest,enable={{is_default_branch}}
+                      type=sha,prefix=sha-
+                      type=semver,pattern={{version}}
+                      type=semver,pattern={{major}}.{{minor}}
 
-      - name: Determine version
-        if: steps.skip.outputs.should_build == 'true'
-        id: version
-        run: |
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          fi
+            - name: Determine version
+              if: steps.skip.outputs.should_build == 'true'
+              id: version
+              run: |
+                  if [[ "${{ github.ref_type }}" == "tag" ]]; then
+                    echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "version=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+                  fi
 
-      - name: Build and push
-        if: steps.skip.outputs.should_build == 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ steps.version.outputs.version }}
+            - name: Build and push
+              if: steps.skip.outputs.should_build == 'true'
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: ${{ matrix.dockerfile }}
+                  push: true
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  build-args: |
+                      VERSION=${{ steps.version.outputs.version }}

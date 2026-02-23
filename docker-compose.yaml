@@ -1,96 +1,109 @@
 services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-catcatalog}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-catcatalog}
-      POSTGRES_DB: ${POSTGRES_DB:-catcatalog}
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U catcatalog"]
-      interval: 2s
-      timeout: 5s
-      retries: 10
+    postgres:
+        image: postgres:16
+        environment:
+            POSTGRES_USER: ${POSTGRES_USER:-catcatalog}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-catcatalog}
+            POSTGRES_DB: ${POSTGRES_DB:-catcatalog}
+        ports:
+            - "5432:5432"
+        volumes:
+            - pgdata:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U catcatalog"]
+            interval: 2s
+            timeout: 5s
+            retries: 10
 
-  catalog:
-    build:
-      context: .
-      dockerfile: services/catalog/Dockerfile
-    ports:
-      - "8001:8001"
-    environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://catcatalog:catcatalog@postgres:5432/catcatalog}
-      - S3_BUCKET=${S3_BUCKET:-catcatalog}
-      - S3_REGION=${S3_REGION:-us-east-1}
-      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-    depends_on:
-      postgres:
-        condition: service_healthy
+    catalog:
+        build:
+            context: .
+            dockerfile: services/catalog/Dockerfile
+        ports:
+            - "8001:8001"
+        environment:
+            - DATABASE_URL=${DATABASE_URL:-postgresql://catcatalog:catcatalog@postgres:5432/catcatalog}
+            - S3_BUCKET=${S3_BUCKET:-catcatalog}
+            - S3_REGION=${S3_REGION:-us-east-1}
+            - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
+            - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+            - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+        depends_on:
+            postgres:
+                condition: service_healthy
 
-  web:
-    build:
-      context: .
-      dockerfile: services/web/Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      - CATALOG_URL=http://catalog:8001
-    depends_on:
-      - catalog
+    web:
+        build:
+            context: .
+            dockerfile: services/web/Dockerfile
+        ports:
+            - "3000:3000"
+        environment:
+            - CATALOG_URL=http://catalog:8001
+        depends_on:
+            - catalog
 
-  detect:
-    build:
-      context: .
-      dockerfile: services/detect/Dockerfile
-    deploy:
-      replicas: 2
-    environment:
-      - S3_BUCKET=${S3_BUCKET:-catcatalog}
-      - S3_REGION=${S3_REGION:-us-east-1}
-      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - S3_WATCH_PREFIX=${S3_WATCH_PREFIX:-clips/}
-      - S3_CROPS_PREFIX=${S3_CROPS_PREFIX:-crops/}
-      - POLL_INTERVAL=${POLL_INTERVAL:-5}
-      - CONFIDENCE=${CONFIDENCE:-0.25}
-      - FRAME_SKIP=${FRAME_SKIP:-4}
-      - CATALOG_URL=http://catalog:8001
-    depends_on:
-      - catalog
+    detect:
+        build:
+            context: .
+            dockerfile: services/detect/Dockerfile
+        deploy:
+            replicas: 2
+        environment:
+            - S3_BUCKET=${S3_BUCKET:-catcatalog}
+            - S3_REGION=${S3_REGION:-us-east-1}
+            - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
+            - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+            - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+            - S3_WATCH_PREFIX=${S3_WATCH_PREFIX:-clips/}
+            - S3_CROPS_PREFIX=${S3_CROPS_PREFIX:-crops/}
+            - POLL_INTERVAL=${POLL_INTERVAL:-5}
+            - CONFIDENCE=${CONFIDENCE:-0.25}
+            - FRAME_SKIP=${FRAME_SKIP:-4}
+            - CATALOG_URL=http://catalog:8001
+        depends_on:
+            - catalog
 
-  # detect-cuda:
-  #   build:
-  #     context: .
-  #     dockerfile: services/detect/Dockerfile.cuda
-  #   ports:
-  #     - "8000:8000"
-  #   environment:
-  #     - S3_BUCKET=${S3_BUCKET:-catcatalog}
-  #     - S3_REGION=${S3_REGION:-us-east-1}
-  #     - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
-  #     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-  #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-  #     - S3_WATCH_PREFIX=${S3_WATCH_PREFIX:-clips/}
-  #     - S3_CROPS_PREFIX=${S3_CROPS_PREFIX:-crops/}
-  #     - POLL_INTERVAL=${POLL_INTERVAL:-5}
-  #     - CONFIDENCE=${CONFIDENCE:-0.25}
-  #     - FRAME_SKIP=${FRAME_SKIP:-4}
-  #     - CATALOG_URL=http://catalog:8001
-  #   depends_on:
-  #     - catalog
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             count: 1
-  #             capabilities: [gpu]
+    notify:
+        build:
+            context: .
+            dockerfile: services/notify/Dockerfile
+        environment:
+            - NOTIFY_TIME=${NOTIFY_TIME:-08:00}
+            - NTFY_TOPIC=${NTFY_TOPIC:-}
+            - LOOKBACK_HOURS=${LOOKBACK_HOURS:-12}
+            - TZ=${TZ:-UTC}
+            - CATALOG_URL=http://catalog:8001
+        depends_on:
+            - catalog
+
+    # detect-cuda:
+    #   build:
+    #     context: .
+    #     dockerfile: services/detect/Dockerfile.cuda
+    #   ports:
+    #     - "8000:8000"
+    #   environment:
+    #     - S3_BUCKET=${S3_BUCKET:-catcatalog}
+    #     - S3_REGION=${S3_REGION:-us-east-1}
+    #     - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
+    #     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+    #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+    #     - S3_WATCH_PREFIX=${S3_WATCH_PREFIX:-clips/}
+    #     - S3_CROPS_PREFIX=${S3_CROPS_PREFIX:-crops/}
+    #     - POLL_INTERVAL=${POLL_INTERVAL:-5}
+    #     - CONFIDENCE=${CONFIDENCE:-0.25}
+    #     - FRAME_SKIP=${FRAME_SKIP:-4}
+    #     - CATALOG_URL=http://catalog:8001
+    #   depends_on:
+    #     - catalog
+    #   deploy:
+    #     resources:
+    #       reservations:
+    #         devices:
+    #           - driver: nvidia
+    #             count: 1
+    #             capabilities: [gpu]
 
 volumes:
-  pgdata:
+    pgdata:
